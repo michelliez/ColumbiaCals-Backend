@@ -4,8 +4,8 @@ services:
     env: python
     region: oregon
     plan: free
-buildCommand: "pip install -r requirements.txt && python scraper.py && python nutrition_api.py"
-startCommand: "python scheduler.py & gunicorn server:app"
+    buildCommand: "pip install -r requirements.txt && python scraper.py && python nutrition_api.py"
+    startCommand: "bash start.sh"
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
