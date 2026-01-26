@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: columbiacals-backend
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn server:app"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: USDA_API_KEY
+        value: ewKS5i9HHXzrJfWRzK88q9EcjJfBT2ufivWOx6BK

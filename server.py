@@ -128,18 +128,7 @@ def refresh_data():
             "message": f"Error: {str(e)}"
         }), 500
 
+
 if __name__ == '__main__':
-    print("\n" + "="*50)
-    print("🚀 ColumbiaCals API Server Starting...")
-    print("="*50)
-    print("\n📍 Server running at: http://localhost:8080")
-    print("📍 API endpoint: http://localhost:8080/api/dining-halls")
-    print("📍 Refresh endpoint: http://localhost:8080/api/refresh")
-    print("\n💡 Tips:")
-    print("   - Test in browser: http://localhost:8080")
-    print("   - For iOS: Use your Mac's IP instead of localhost")
-    print("   - Find IP: ipconfig getifaddr en0")
-    print("   - iOS app can call /api/refresh to update menus")
-    print("\n⌨️  Press Ctrl+C to stop\n")
-    
-    app.run(debug=True, host='0.0.0.0', port=8080)
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
