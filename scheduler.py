@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""
+Scheduler that runs scraper every 3 hours
+Updates menus for breakfast, lunch, and dinner automatically
+"""
+
+import schedule
+import time
+import subprocess
+import sys
+from datetime import datetime
+
+def update_menus():
+    """Run scraper and nutrition API"""
+    print(f"\n{'='*60}")
+    print(f"🕐 Scheduled update at {datetime.now().strftime('%I:%M %p')}")
+    print(f"{'='*60}\n")
+    
+    try:
+        # Run scraper (it auto-detects meal period)
+        print("Step 1/2: Running scraper...")
+        result1 = subprocess.run([sys.executable, 'scraper.py'], 
+                                capture_output=True, text=True, timeout=60)
+        
+        if result1.returncode == 0:
+            print("✅ Scraper complete!")
+            print(result1.stdout)
+        else:
+            print(f"❌ Scraper failed: {result1.stderr}")
+            return
+        
+        # Run nutrition API
+        print("\nStep 2/2: Adding nutrition data...")
+        result2 = subprocess.run([sys.executable, 'nutrition_api.py'], 
+                                capture_output=True, text=True, timeout=120)
+        
+        if result2.returncode == 0:
+            print("✅ Nutrition data added!")
+        else:
+            print(f"❌ Nutrition API failed: {result2.stderr}")
+            return
+        
+        print(f"\n{'='*60}")
+        print(f"🎉 Update complete at {datetime.now().strftime('%I:%M %p')}")
+        print(f"{'='*60}\n")
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+
+# Schedule updates every 3 hours
+schedule.every(3).hours.do(update_menus)
+
+if __name__ == "__main__":
+    print("🚀 Scheduler starting...")
+    
+    # Run immediately on startup
+    update_menus()
+    
+    # Show next scheduled times
+    print("\n⏰ Updates scheduled every 3 hours")
+    print("   Meal periods auto-detected based on time:")
+    print("   • 5 AM - 11 AM: Breakfast")
+    print("   • 11 AM - 4 PM: Lunch")
+    print("   • 4 PM - 5 AM: Dinner\n")
+    
+    # Keep running
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
