@@ -48,7 +48,7 @@ def update_menus():
         print(f"❌ Error: {e}")
 
 # Schedule updates every 3 hours
-schedule.every(3).hours.do(update_menus)
+schedule.every(1).hours.do(update_menus)
 
 if __name__ == "__main__":
     print("🚀 Scheduler starting...")
