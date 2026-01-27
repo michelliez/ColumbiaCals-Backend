@@ -2,12 +2,11 @@ services:
   - type: web
     name: columbiacals-backend
     env: python
-    region: oregon
-    plan: free
-    buildCommand: "pip install -r requirements.txt && python scraper.py && python nutrition_api.py"
-    startCommand: "python scheduler.py & gunicorn server:app --bind 0.0.0.0:$PORT"
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
-      - key: USDA_API_KEY
-        value: ewKS5i9HHXzrJfWRzK88q9EcjJfBT2ufivWOx6BK
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn server:app --bind 0.0.0.0:$PORT"
+    
+  - type: worker
+    name: columbiacals-scheduler
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python scheduler.py"
