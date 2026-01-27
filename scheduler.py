@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Scheduler that runs scraper every 3 hours
+Scheduler that runs scraper at :01 of every hour
 Updates menus for breakfast, lunch, and dinner automatically
 """
 
@@ -47,17 +47,17 @@ def update_menus():
     except Exception as e:
         print(f"❌ Error: {e}")
 
-# Schedule updates every 3 hours
-schedule.every(1).hours.do(update_menus)
-
 if __name__ == "__main__":
     print("🚀 Scheduler starting...")
     
     # Run immediately on startup
     update_menus()
     
-    # Show next scheduled times
-    print("\n⏰ Updates scheduled every 3 hours")
+    # Schedule at :01 of every hour (6:01, 7:01, 8:01, etc.)
+    schedule.every().hour.at(":01").do(update_menus)
+    
+    print("\n⏰ Updates scheduled at :01 of every hour")
+    print("   (6:01 AM, 7:01 AM, 8:01 AM, 12:01 PM, 6:01 PM, etc.)")
     print("   Meal periods auto-detected based on time:")
     print("   • 5 AM - 11 AM: Breakfast")
     print("   • 11 AM - 4 PM: Lunch")
