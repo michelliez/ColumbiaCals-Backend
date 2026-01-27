@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-LionDine.com Multi-Meal Scraper
-Scrapes breakfast, lunch, and dinner, then intelligently matches halls to meals
+LionDine Multi-Meal Scraper with Smart Time-Aware Matching
 """
 
 import requests
@@ -9,10 +8,20 @@ from bs4 import BeautifulSoup
 import json
 from datetime import datetime
 
+def get_current_meal_period():
+    """Determine current meal period based on time"""
+    now = datetime.now()
+    hour = now.hour
+    
+    if 5 <= hour < 11:
+        return "breakfast"
+    elif 11 <= hour < 16:
+        return "lunch"
+    else:
+        return "dinner"
+
 def scrape_liondine_meal(meal_period):
-    """
-    Scrape LionDine for a specific meal period
-    """
+    """Scrape LionDine for a specific meal period"""
     print(f"🔍 Scraping {meal_period} menus...")
     
     urls_to_try = [
@@ -27,7 +36,6 @@ def scrape_liondine_meal(meal_period):
     
     for url in urls_to_try:
         try:
-            print(f"   Trying: {url}")
             response = requests.get(url, headers=headers, timeout=10)
             
             if response.status_code == 200:
@@ -98,43 +106,51 @@ def parse_dining_halls(soup, meal_period):
     
     return dining_halls
 
-def parse_hours_to_minutes(hours_str):
+def hall_matches_time_period(hours_str, target_period):
     """
-    Parse hours like "11:00 AM to 4:00 PM" into (start_minutes, end_minutes)
-    Returns None if can't parse
+    Check if a hall's hours match the target meal period
+    Returns True if the hall serves during this period
     """
     if "closed" in hours_str.lower():
-        return None
+        return False
     
+    # Parse hours like "11:00 AM to 4:00 PM"
     parts = hours_str.lower().split("to")
     if len(parts) != 2:
-        return None
+        return False
     
     try:
         start_str = parts[0].strip()
-        end_str = parts[1].strip()
+        start_hour = parse_hour_from_string(start_str)
         
-        start_mins = parse_time_to_minutes(start_str)
-        end_mins = parse_time_to_minutes(end_str)
+        if start_hour is None:
+            return False
         
-        if start_mins is not None and end_mins is not None:
-            return (start_mins, end_mins)
+        # Breakfast: 5 AM - 11 AM starts
+        if target_period == "breakfast":
+            return 5 <= start_hour < 11
+        
+        # Lunch: 11 AM - 4 PM starts  
+        elif target_period == "lunch":
+            return 11 <= start_hour < 16
+        
+        # Dinner: 4 PM onwards starts
+        elif target_period == "dinner":
+            return start_hour >= 16
+        
     except:
         pass
     
-    return None
+    return False
 
-def parse_time_to_minutes(time_str):
-    """Parse '11:00 AM' to minutes since midnight"""
+def parse_hour_from_string(time_str):
+    """Parse hour from '11:00 AM' format"""
     try:
         parts = time_str.split(":")
         if len(parts) != 2:
             return None
         
         hour = int(parts[0].strip())
-        min_part = parts[1].strip().split()[0]
-        minutes = int(min_part)
-        
         is_pm = "pm" in time_str.lower()
         
         if is_pm and hour != 12:
@@ -142,43 +158,21 @@ def parse_time_to_minutes(time_str):
         elif not is_pm and hour == 12:
             hour = 0
         
-        return hour * 60 + minutes
+        return hour
     except:
         return None
 
-def get_meal_period_from_hours(hours_str):
-    """
-    Determine which meal period this hall is serving based on its hours
-    """
-    time_range = parse_hours_to_minutes(hours_str)
-    if not time_range:
-        return None
-    
-    start, end = time_range
-    
-    # Breakfast: typically 5 AM - 11 AM (300 - 660 minutes)
-    if start >= 300 and start < 660:
-        return "breakfast"
-    
-    # Lunch: typically 11 AM - 4 PM (660 - 960 minutes)
-    if start >= 660 and start < 960:
-        return "lunch"
-    
-    # Dinner: typically 4 PM onwards (960+ minutes)
-    if start >= 960:
-        return "dinner"
-    
-    # Default to dinner for late hours
-    return "dinner"
-
 def scrape_all_meals():
-    """
-    Scrape all three meal periods and combine intelligently
-    """
+    """Scrape all three meal periods and intelligently combine"""
     print("\n" + "=" * 60)
-    print("🦁 LionDine Multi-Meal Scraper")
+    print("🦁 LionDine Smart Multi-Meal Scraper")
     print("=" * 60)
-    print(f"🕐 Time: {datetime.now().strftime('%I:%M %p')}")
+    
+    current_time = datetime.now().strftime('%I:%M %p')
+    current_period = get_current_meal_period()
+    
+    print(f"🕐 Current time: {current_time}")
+    print(f"🍽️  Current period: {current_period}")
     print("=" * 60)
     
     # Scrape all three meals
@@ -186,55 +180,57 @@ def scrape_all_meals():
     lunch_halls = scrape_liondine_meal("lunch")
     dinner_halls = scrape_liondine_meal("dinner")
     
-    # Create lookup by hall name
-    all_meals = {
-        'breakfast': {h['name']: h for h in breakfast_halls},
-        'lunch': {h['name']: h for h in lunch_halls},
-        'dinner': {h['name']: h for h in dinner_halls}
-    }
+    # Create master list organized by hall name
+    all_halls = {}
     
-    # Get all unique hall names
-    all_hall_names = set()
-    for meal_halls in [breakfast_halls, lunch_halls, dinner_halls]:
-        for hall in meal_halls:
-            all_hall_names.add(hall['name'])
+    # Add all halls from each meal
+    for meal, halls in [("breakfast", breakfast_halls), ("lunch", lunch_halls), ("dinner", dinner_halls)]:
+        for hall in halls:
+            hall_name = hall['name']
+            
+            if hall_name not in all_halls:
+                all_halls[hall_name] = {}
+            
+            all_halls[hall_name][meal] = hall
     
-    # Match each hall to the right meal based on hours
+    # For each hall, pick the right meal based on its hours
     final_halls = []
     
-    for hall_name in all_hall_names:
-        # Try to find this hall in each meal period
-        hall_data = None
+    for hall_name, meals in all_halls.items():
+        chosen_hall = None
         
-        # Check all three meals for this hall
-        for meal in ['breakfast', 'lunch', 'dinner']:
-            if hall_name in all_meals[meal]:
-                candidate = all_meals[meal][hall_name]
-                
-                # Determine which meal this hall is actually serving based on hours
-                inferred_meal = get_meal_period_from_hours(candidate['hours'])
-                
-                # If the scraped meal matches the inferred meal, use it
-                if inferred_meal == meal:
-                    hall_data = candidate
-                    break
-                
-                # Otherwise, keep as fallback
-                if hall_data is None:
-                    hall_data = candidate
+        # Try to find the hall version that matches current time period
+        if current_period in meals:
+            candidate = meals[current_period]
+            if hall_matches_time_period(candidate['hours'], current_period):
+                chosen_hall = candidate
         
-        if hall_data:
-            final_halls.append(hall_data)
+        # If no match for current period, try other periods
+        if not chosen_hall:
+            for period in ["breakfast", "lunch", "dinner"]:
+                if period in meals:
+                    candidate = meals[period]
+                    if hall_matches_time_period(candidate['hours'], period):
+                        chosen_hall = candidate
+                        break
+        
+        # Fallback: use any version we have
+        if not chosen_hall and meals:
+            chosen_hall = list(meals.values())[0]
+        
+        if chosen_hall:
+            final_halls.append(chosen_hall)
     
     print("\n" + "=" * 60)
-    print(f"📋 Combined Menu Summary:")
+    print(f"📋 Combined Menu Summary (showing {current_period}):")
+    
     total_items = 0
     for hall in final_halls:
         items = len(hall['food_items'])
         total_items += items
         meal = hall.get('meal_period', 'unknown')
         status = f"{items} items ({meal})" if items > 0 else "Closed"
-        print(f"   {hall['name']}: {status}")
+        print(f"   {hall['name']}: {status} - {hall['hours']}")
     
     print(f"\n✅ Total: {len(final_halls)} halls, {total_items} menu items")
     
