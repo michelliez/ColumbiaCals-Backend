@@ -4,9 +4,3 @@ services:
     env: python
     buildCommand: "pip install -r requirements.txt"
     startCommand: "gunicorn server:app --bind 0.0.0.0:$PORT"
-    
-  - type: worker
-    name: columbiacals-scheduler
-    env: python
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python scheduler.py"
