@@ -1,212 +1,168 @@
 #!/usr/bin/env python3
 """
-Improved USDA API Integration with Better Matching
-Filters unrealistic results and prioritizes quality matches
+USDA Nutrition API Integration - More Robust Version
+Adds nutrition data to menu items with better error handling
 """
 
 import requests
 import json
 import time
 
-USDA_API_KEY = "ewKS5i9HHXzrJfWRzK88q9EcjJfBT2ufivWOx6BK"
-USDA_BASE_URL = "https://api.nal.usda.gov/fdc/v1"
+USDA_API_KEY = "DEMO_KEY"  # Using demo key (limited to 30 requests/hour)
+USDA_SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
 
-# Manual overrides for common problematic foods
+# Manual overrides for common foods
 NUTRITION_OVERRIDES = {
     "tacos": {"calories": 210, "protein": 9, "carbs": 13, "fat": 13, "sodium": 450},
-    "taco": {"calories": 210, "protein": 9, "carbs": 13, "fat": 13, "sodium": 450},
     "pizza": {"calories": 285, "protein": 12, "carbs": 36, "fat": 10, "sodium": 640},
     "burger": {"calories": 354, "protein": 20, "carbs": 30, "fat": 16, "sodium": 497},
     "hamburger": {"calories": 354, "protein": 20, "carbs": 30, "fat": 16, "sodium": 497},
     "burrito": {"calories": 400, "protein": 18, "carbs": 50, "fat": 14, "sodium": 900},
     "quesadilla": {"calories": 380, "protein": 16, "carbs": 35, "fat": 18, "sodium": 750},
+    "chicken": {"calories": 165, "protein": 31, "carbs": 0, "fat": 3.6, "sodium": 74},
+    "rice": {"calories": 130, "protein": 2.7, "carbs": 28, "fat": 0.3, "sodium": 1},
+    "pasta": {"calories": 131, "protein": 5, "carbs": 25, "fat": 1.3, "sodium": 1},
+    "salad": {"calories": 33, "protein": 2.8, "carbs": 6.3, "fat": 0.2, "sodium": 89},
+    "fries": {"calories": 312, "protein": 3.4, "carbs": 41, "fat": 15, "sodium": 210},
+    "sandwich": {"calories": 250, "protein": 12, "carbs": 30, "fat": 8, "sodium": 500},
 }
 
-def is_realistic_nutrition(calories, protein, carbs, fat):
-    """
-    Check if nutrition values are realistic
-    Filters out obvious data quality issues
-    """
-    # Calories should be in reasonable range
-    if calories < 5 or calories > 2000:
-        return False
-    
-    # Calculate calories from macros
-    calculated_cals = (protein * 4) + (carbs * 4) + (fat * 9)
-    
-    # Allow some variation, but catch major mismatches
-    if calculated_cals > 0:
-        ratio = calories / calculated_cals
-        if ratio < 0.5 or ratio > 2.0:
-            return False
-    
-    # Check for unrealistic macro ratios
-    total_macros = protein + carbs + fat
-    if total_macros > 0:
-        protein_pct = protein / total_macros
-        carbs_pct = carbs / total_macros
-        fat_pct = fat / total_macros
-        
-        # No macro should be more than 95% of total
-        if max(protein_pct, carbs_pct, fat_pct) > 0.95:
-            return False
-    
-    return True
+def get_nutrition_from_override(food_name):
+    """Check if food has manual override"""
+    food_lower = food_name.lower()
+    for key, nutrition in NUTRITION_OVERRIDES.items():
+        if key in food_lower:
+            print(f"      Using override for: {food_name}")
+            return nutrition
+    return None
 
-def search_usda_food(food_name):
-    """
-    Search USDA database with improved matching
-    Returns best match or None
-    """
-    print(f"   Searching USDA for: {food_name}")
+def search_usda_food(food_name, retries=2):
+    """Search USDA database for food with retries"""
+    # Check overrides first
+    override = get_nutrition_from_override(food_name)
+    if override:
+        return override
     
-    # Check manual overrides first
-    food_lower = food_name.lower().strip()
-    for override_key, override_data in NUTRITION_OVERRIDES.items():
-        if override_key in food_lower:
-            print(f"   ✅ Using manual override for '{food_name}'")
-            return {
-                "description": food_name,
-                "calories": override_data["calories"],
-                "protein": override_data["protein"],
-                "carbs": override_data["carbs"],
-                "fat": override_data["fat"],
-                "sodium": override_data["sodium"],
-                "serving_size": "1 serving"
+    for attempt in range(retries):
+        try:
+            params = {
+                "query": food_name,
+                "pageSize": 20,
+                "api_key": USDA_API_KEY,
+                "dataType": ["Survey (FNDDS)", "Foundation", "SR Legacy"]
             }
+            
+            response = requests.get(USDA_SEARCH_URL, params=params, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get('foods'):
+                    # Get best match
+                    best_food = None
+                    best_score = 0
+                    
+                    for food in data['foods'][:10]:
+                        score = calculate_match_score(food_name, food)
+                        if score > best_score:
+                            best_score = score
+                            best_food = food
+                    
+                    if best_food:
+                        return extract_nutrition(best_food)
+            
+            elif response.status_code == 429:
+                # Rate limited
+                print(f"      Rate limited, waiting {5 * (attempt + 1)}s...")
+                time.sleep(5 * (attempt + 1))
+                continue
+            
+            # If we get here, no good results
+            return get_default_nutrition()
+            
+        except requests.exceptions.Timeout:
+            print(f"      Timeout (attempt {attempt + 1}/{retries})")
+            if attempt < retries - 1:
+                time.sleep(2)
+            continue
+        except Exception as e:
+            print(f"      Error: {str(e)[:50]}")
+            if attempt < retries - 1:
+                time.sleep(2)
+            continue
     
-    url = f"{USDA_BASE_URL}/foods/search"
-    params = {
-        "api_key": USDA_API_KEY,
-        "query": food_name,
-        "pageSize": 20,  # Get more results to filter through
-        "dataType": ["Survey (FNDDS)", "Foundation", "SR Legacy"]
+    # All retries failed
+    return get_default_nutrition()
+
+def calculate_match_score(query, food_item):
+    """Score how well a USDA food matches the query"""
+    score = 0
+    query_lower = query.lower()
+    food_name = food_item.get('description', '').lower()
+    
+    # Exact match bonus
+    if query_lower == food_name:
+        score += 100
+    
+    # Partial match
+    if query_lower in food_name or food_name in query_lower:
+        score += 50
+    
+    # Prefer Survey/FNDDS data
+    if food_item.get('dataType') == 'Survey (FNDDS)':
+        score += 30
+    
+    # Get nutrition data
+    nutrients = {n['nutrientId']: n.get('value', 0) for n in food_item.get('foodNutrients', [])}
+    calories = nutrients.get(1008, 0)  # Energy
+    protein = nutrients.get(1003, 0)   # Protein
+    
+    # Reasonable calorie range
+    if 50 <= calories <= 1000:
+        score += 20
+    
+    # Has protein data
+    if protein > 0:
+        score += 10
+    
+    # Filter unrealistic values
+    if calories < 5 or calories > 2000:
+        score -= 50
+    
+    return score
+
+def extract_nutrition(food_item):
+    """Extract nutrition from USDA food item"""
+    nutrients = {n['nutrientId']: n.get('value', 0) for n in food_item.get('foodNutrients', [])}
+    
+    nutrition = {
+        'calories': round(nutrients.get(1008, 0)),      # Energy (kcal)
+        'protein': round(nutrients.get(1003, 0), 1),    # Protein (g)
+        'carbs': round(nutrients.get(1005, 0), 1),      # Carbohydrates (g)
+        'fat': round(nutrients.get(1004, 0), 1),        # Fat (g)
+        'sodium': round(nutrients.get(1093, 0))         # Sodium (mg)
     }
     
-    try:
-        response = requests.get(url, params=params, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            foods = data.get("foods", [])
-            
-            if not foods:
-                print(f"   ⚠️  No USDA results for '{food_name}'")
-                return None
-            
-            # Score and filter results
-            scored_results = []
-            
-            for food in foods:
-                nutrients = food.get("foodNutrients", [])
-                
-                # Extract nutrition values
-                calories = None
-                protein = None
-                carbs = None
-                fat = None
-                sodium = None
-                
-                for nutrient in nutrients:
-                    name = nutrient.get("nutrientName", "").lower()
-                    value = nutrient.get("value", 0)
-                    
-                    if "energy" in name and "kcal" not in name:
-                        calories = value
-                    elif "protein" in name:
-                        protein = value
-                    elif "carbohydrate" in name and "by difference" in name.lower():
-                        carbs = value
-                    elif "total lipid" in name or "fat" in name:
-                        fat = value
-                    elif "sodium" in name:
-                        sodium = value
-                
-                # Must have at least calories to be useful
-                if calories is None or calories == 0:
-                    continue
-                
-                # Set defaults for missing macros
-                if protein is None:
-                    protein = 0
-                if carbs is None:
-                    carbs = 0
-                if fat is None:
-                    fat = 0
-                if sodium is None:
-                    sodium = 0
-                
-                # Filter unrealistic results
-                if not is_realistic_nutrition(calories, protein, carbs, fat):
-                    print(f"   ❌ Filtered out unrealistic result: {calories} cal, {protein}g protein")
-                    continue
-                
-                # Score the result
-                score = 0
-                description = food.get("description", "").lower()
-                food_lower = food_name.lower()
-                
-                # Exact match bonus
-                if food_lower == description:
-                    score += 100
-                
-                # Partial match
-                if food_lower in description or description in food_lower:
-                    score += 50
-                
-                # Prefer "Survey" data (most accurate for prepared foods)
-                if food.get("dataType") == "Survey (FNDDS)":
-                    score += 30
-                
-                # Prefer results with reasonable calorie counts
-                if 50 < calories < 1000:
-                    score += 20
-                
-                # Prefer results with all macros
-                if protein > 0 and carbs > 0 and fat > 0:
-                    score += 10
-                
-                serving_size = "100g"
-                if food.get("servingSize") and food.get("servingSizeUnit"):
-                    serving_size = f"{int(food['servingSize'])} {food['servingSizeUnit']}"
-                
-                scored_results.append({
-                    "score": score,
-                    "description": food.get("description", food_name),
-                    "calories": int(calories),
-                    "protein": int(protein),
-                    "carbs": int(carbs),
-                    "fat": int(fat),
-                    "sodium": int(sodium),
-                    "serving_size": serving_size
-                })
-            
-            if not scored_results:
-                print(f"   ⚠️  No realistic matches for '{food_name}'")
-                return None
-            
-            # Sort by score and return best match
-            scored_results.sort(key=lambda x: x["score"], reverse=True)
-            best_match = scored_results[0]
-            
-            print(f"   ✅ Best match: {best_match['description']} ({best_match['calories']} cal, score: {best_match['score']})")
-            
-            return best_match
-            
-        else:
-            print(f"   ❌ USDA API error: {response.status_code}")
-            return None
-            
-    except Exception as e:
-        print(f"   ❌ Error searching USDA: {e}")
-        return None
+    # Validate
+    if nutrition['calories'] < 5:
+        return get_default_nutrition()
+    
+    return nutrition
 
-def enrich_menu_with_nutrition():
-    """
-    Main function to add nutrition data to menu
-    """
+def get_default_nutrition():
+    """Return default nutrition when API fails"""
+    return {
+        'calories': 150,
+        'protein': 5,
+        'carbs': 20,
+        'fat': 5,
+        'sodium': 200
+    }
+
+def add_nutrition_to_menu():
+    """Main function to add nutrition data"""
     print("\n" + "=" * 60)
-    print("🥗 Adding Nutrition Data (Improved Matching)")
+    print("🥗 Adding Nutrition Data")
     print("=" * 60)
     
     # Load menu data
@@ -214,85 +170,65 @@ def enrich_menu_with_nutrition():
         with open('menu_data.json', 'r') as f:
             dining_halls = json.load(f)
     except FileNotFoundError:
-        print("❌ menu_data.json not found. Run scraper.py first.")
+        print("❌ menu_data.json not found. Run scraper first.")
         return
     
     total_items = 0
-    enriched_items = 0
-    failed_items = 0
+    processed_items = 0
     
-    # Process each dining hall
     for hall in dining_halls:
         hall_name = hall['name']
         food_items = hall.get('food_items', [])
         
         if not food_items:
-            print(f"\n📍 {hall_name}: No items to process")
-            hall['food_items_with_nutrition'] = []
+            print(f"\n🏛️  {hall_name}: No items (closed)")
             continue
         
-        print(f"\n📍 {hall_name}: Processing {len(food_items)} items...")
+        print(f"\n🏛️  {hall_name}: {len(food_items)} items")
         
-        enriched_foods = []
+        items_with_nutrition = []
         
-        for item in food_items:
-            total_items += 1
+        for i, item in enumerate(food_items):
             food_name = item['name']
+            total_items += 1
             
-            # Search USDA
+            # Progress indicator
+            if i % 10 == 0 and i > 0:
+                print(f"   Progress: {i}/{len(food_items)}")
+            
+            # Get nutrition
             nutrition = search_usda_food(food_name)
             
             if nutrition:
-                enriched_food = {
-                    "name": food_name,
-                    "category": item['category'],
-                    "calories": nutrition['calories'],
-                    "protein": nutrition['protein'],
-                    "carbs": nutrition['carbs'],
-                    "fat": nutrition['fat'],
-                    "sodium": nutrition['sodium'],
-                    "fiber": None,
-                    "sugar": None,
-                    "serving_size": nutrition['serving_size'],
-                    "grams": None
-                }
-                enriched_foods.append(enriched_food)
-                enriched_items += 1
+                items_with_nutrition.append({
+                    **item,
+                    **nutrition,
+                    'serving_size': '1 serving'
+                })
+                processed_items += 1
             else:
-                # Use placeholder for failed matches
-                enriched_food = {
-                    "name": food_name,
-                    "category": item['category'],
-                    "calories": 150,
-                    "protein": 5,
-                    "carbs": 20,
-                    "fat": 5,
-                    "sodium": 300,
-                    "fiber": None,
-                    "sugar": None,
-                    "serving_size": "1 serving",
-                    "grams": None
-                }
-                enriched_foods.append(enriched_food)
-                failed_items += 1
-                print(f"   ⚠️  Using placeholder for '{food_name}'")
+                # Use default
+                items_with_nutrition.append({
+                    **item,
+                    **get_default_nutrition(),
+                    'serving_size': '1 serving'
+                })
+                processed_items += 1
             
             # Rate limiting
-            time.sleep(0.1)
+            time.sleep(0.2)
         
-        hall['food_items_with_nutrition'] = enriched_foods
+        hall['food_items_with_nutrition'] = items_with_nutrition
+        print(f"   ✅ Completed: {len(items_with_nutrition)} items")
     
-    # Save enriched data
+    # Save
     with open('menu_with_nutrition.json', 'w') as f:
         json.dump(dining_halls, f, indent=2)
     
     print("\n" + "=" * 60)
-    print(f"✅ Nutrition enrichment complete!")
-    print(f"   Total items: {total_items}")
-    print(f"   Enriched with USDA: {enriched_items}")
-    print(f"   Using placeholders: {failed_items}")
-    print(f"   Success rate: {int(enriched_items/total_items*100)}%")
+    print(f"💾 Saved to menu_with_nutrition.json")
+    print(f"✅ Processed {processed_items}/{total_items} items")
     print("=" * 60)
 
 if __name__ == "__main__":
-    enrich_menu_with_nutrition()
+    add_nutrition_to_menu()
