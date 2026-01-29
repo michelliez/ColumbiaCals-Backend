@@ -1,150 +1,126 @@
 #!/usr/bin/env python3
 """
-LionDine.com All-Meals Scraper
-Tries all meal periods and uses whichever has data
+Columbia Dining Scraper (Selenium - Filtered)
+Scrapes dining.columbia.edu with JavaScript support
 """
 
-import requests
-from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import json
+import time
 from datetime import datetime
 
-def scrape_meal_period(meal_code, meal_display):
-    """Scrape a specific meal period"""
-    url = f"https://liondine.com/?meal={meal_code}"
+DINING_LOCATIONS = [
+    "john-jay",
+    "ferris-booth-commons",
+    "jjs-place",
+    "grace-dodge",
+    "faculty-house",
+    "hewitt",
+    "diana-center",
+    "fac-shack",
+    "chef-mikes",
+    "chef-dons-pizza-pi",
+    "robert-f-smith",
+    "blue-java-butler",
+    "blue-java-uris",
+    "lenfest-cafe"
+]
+
+# Keywords to filter out non-food items
+EXCLUSION_KEYWORDS = [
+    'hours', 'hour', 'closed', 'open', 'date', 'time',
+    'january', 'february', 'march', 'april', 'may', 'june',
+    'july', 'august', 'september', 'october', 'november', 'december',
+    'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+    'announcement', 'notice', 'information'
+]
+
+def is_food_item(text):
+    """Filter out non-food items based on keywords"""
+    text_lower = text.lower().strip()
     
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
-    }
+    # Filter out empty or very short items
+    if len(text_lower) < 3:
+        return False
+    
+    # Filter out items containing exclusion keywords
+    for keyword in EXCLUSION_KEYWORDS:
+        if keyword in text_lower:
+            return False
+    
+    return True
+
+def scrape_dining_hall(location):
+    """Scrape a single dining hall using Selenium"""
+    url = f"https://dining.columbia.edu/content/{location}"
+    
+    # Setup Chrome options
+    chrome_options = Options()
+    chrome_options.add_argument('--headless')
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-gpu')
     
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        driver = webdriver.Chrome(options=chrome_options)
+        driver.get(url)
         
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            return parse_dining_halls(soup, meal_code)
-    except:
-        return []
-    
-    return []
-
-def parse_dining_halls(soup, meal_period):
-    """Parse dining halls from BeautifulSoup object"""
-    dining_halls = []
-    halls = soup.find_all('div', class_='col')
-    
-    for hall in halls:
-        name_tag = hall.find('h3')
-        if not name_tag:
-            continue
-        hall_name = name_tag.text.strip()
+        # Wait for content to load
+        time.sleep(4)
         
-        hours_tag = hall.find('div', class_='hours')
-        hours = hours_tag.text.strip() if hours_tag else "Hours not available"
+        # Find all food items with class "meal-title"
+        food_elements = driver.find_elements(By.CLASS_NAME, "meal-title")
         
-        menu_div = hall.find('div', class_='menu')
         food_items = []
+        for element in food_elements:
+            text = element.text.strip()
+            if text and is_food_item(text):
+                food_items.append(text)
         
-        if menu_div and "No data available" not in menu_div.text:
-            food_tags = menu_div.find_all('div', class_='food-name')
-            current_category = "Main"
-            
-            for food_tag in food_tags:
-                food_name = food_tag.text.strip()
-                
-                prev_category = food_tag.find_previous_sibling('div', class_='food-type')
-                if prev_category:
-                    current_category = prev_category.text.strip()
-                
-                food_items.append({
-                    'name': food_name,
-                    'category': current_category
-                })
+        driver.quit()
         
-        dining_halls.append({
-            'name': hall_name,
-            'hours': hours,
-            'meal_period': meal_period,
-            'food_items': food_items
-        })
+        return {
+            "name": location.replace("-", " ").title(),
+            "food_items": food_items,
+            "scraped_at": datetime.now().isoformat()
+        }
     
-    return dining_halls
+    except Exception as e:
+        print(f"❌ Error scraping {location}: {e}")
+        return {
+            "name": location.replace("-", " ").title(),
+            "food_items": [],
+            "error": str(e)
+        }
 
-def merge_hall_data(all_meals_data):
-    """Merge data from different meal periods, preferring ones with food"""
-    merged = {}
+def scrape_all_locations():
+    """Scrape all dining locations"""
+    print("🦁 Columbia Dining Scraper (Selenium - Filtered)")
+    print("=" * 50)
     
-    for meal_data in all_meals_data:
-        for hall in meal_data:
-            hall_name = hall['name']
-            
-            if hall_name not in merged:
-                merged[hall_name] = hall
-            elif len(hall['food_items']) > len(merged[hall_name]['food_items']):
-                # This meal period has more items, use it
-                merged[hall_name] = hall
+    results = []
     
-    return list(merged.values())
-
-def scrape_all_meals():
-    """Scrape all meal periods"""
-    print("\n" + "=" * 60)
-    print("🦁 LionDine All-Meals Scraper")
-    print("=" * 60)
-    print(f"🕐 Time: {datetime.now().strftime('%I:%M %p')}")
-    print("=" * 60)
+    print("🌐 Starting Chrome browser...")
     
-    all_meals_data = []
+    for location in DINING_LOCATIONS:
+        print(f"📍 Scraping {location}...")
+        data = scrape_dining_hall(location)
+        results.append(data)
+        print(f"   ✅ Found {len(data['food_items'])} food items")
+        time.sleep(2)  # Be nice to the server
     
-    for meal_code, meal_display in [("breakfast", "Breakfast"), ("lunch", "Lunch"), ("dinner", "Dinner")]:
-        print(f"\n📋 Scraping {meal_display}...")
-        meal_data = scrape_meal_period(meal_code, meal_display)
-        
-        if meal_data:
-            open_count = sum(1 for hall in meal_data if hall['food_items'])
-            print(f"   Found {len(meal_data)} halls, {open_count} with menus")
-            all_meals_data.append(meal_data)
-    
-    # Merge data
-    print("\n🔀 Merging data from all meal periods...")
-    merged_halls = merge_hall_data(all_meals_data)
-    
-    return merged_halls
-
-def save_menu_data(dining_halls):
-    """Save scraped data"""
+    # Save results
     with open('menu_data.json', 'w') as f:
-        json.dump(dining_halls, f, indent=2)
+        json.dump(results, f, indent=2)
     
-    print("\n" + "=" * 60)
-    print(f"💾 Saved to menu_data.json")
-    print("=" * 60)
+    print(f"\n✅ Scraped {len(results)} locations")
+    print(f"📄 Saved to menu_data.json")
     
-    total_items = sum(len(hall['food_items']) for hall in dining_halls)
-    open_halls = sum(1 for hall in dining_halls if hall['food_items'])
-    
-    print(f"\n✅ Summary:")
-    print(f"   Total halls: {len(dining_halls)}")
-    print(f"   Open halls: {open_halls}")
-    print(f"   Total items: {total_items}")
-    print("\n📋 Halls with menus:")
-    for hall in dining_halls:
-        if hall['food_items']:
-            print(f"   - {hall['name']}: {len(hall['food_items'])} items ({hall['meal_period']})")
+    return results
 
 if __name__ == "__main__":
-    dining_halls = scrape_all_meals()
-    
-    if dining_halls:
-        save_menu_data(dining_halls)
-        print("\n🔄 Next: Run 'python3 nutrition_api.py'")
-    else:
-        print("\n❌ No data scraped")
-
-@app.route('/api/status', methods=['GET'])
-def status():
-    return jsonify({
-        'status': 'ok',
-        'time': datetime.now().isoformat(),
-        'service': 'CalRoarie Backend'
-    })
+    scrape_all_locations()
