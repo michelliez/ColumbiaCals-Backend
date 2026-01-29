@@ -140,3 +140,11 @@ if __name__ == "__main__":
         print("\n🔄 Next: Run 'python3 nutrition_api.py'")
     else:
         print("\n❌ No data scraped")
+
+@app.route('/api/status', methods=['GET'])
+def status():
+    return jsonify({
+        'status': 'ok',
+        'time': datetime.now().isoformat(),
+        'service': 'CalRoarie Backend'
+    })
