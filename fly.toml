@@ -1,16 +1,23 @@
-app = "calroarie-backend"
-primary_region = "ewr"
+# fly.toml app configuration file generated for app-frosty-wave-6002 on 2026-01-29T23:51:03Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'app-frosty-wave-6002'
+primary_region = 'iad'
 
 [build]
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = true
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
+  processes = ['app']
 
 [[vm]]
-  memory = '512mb'
+  memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
+  memory_mb = 256
