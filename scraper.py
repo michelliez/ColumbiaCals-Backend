@@ -58,21 +58,28 @@ def scrape_dining_hall(location):
     """Scrape a single dining hall using Selenium"""
     url = f"https://dining.columbia.edu/content/{location}"
     
-    # Setup Chrome options
+    # Setup Chrome options - OPTIMIZED FOR LOW MEMORY
     chrome_options = Options()
     chrome_options.add_argument('--headless')
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
     chrome_options.add_argument('--disable-gpu')
+    chrome_options.add_argument('--disable-software-rasterizer')
+    chrome_options.add_argument('--disable-extensions')
+    chrome_options.add_argument('--disable-logging')
+    chrome_options.add_argument('--disable-features=VizDisplayCompositor')
+    chrome_options.add_argument('--single-process')  # CRITICAL for low memory
+    chrome_options.add_argument('--disable-web-security')
+    chrome_options.add_argument('--window-size=1920,1080')
     
     try:
         driver = webdriver.Chrome(options=chrome_options)
+        driver.set_page_load_timeout(30)
+        
         driver.get(url)
+        time.sleep(3)  # Reduced from 4
         
-        # Wait for content to load
-        time.sleep(4)
-        
-        # Find all food items with class "meal-title"
+        # Rest of your code...
         food_elements = driver.find_elements(By.CLASS_NAME, "meal-title")
         
         food_items = []
@@ -81,7 +88,7 @@ def scrape_dining_hall(location):
             if text and is_food_item(text):
                 food_items.append(text)
         
-        driver.quit()
+        driver.quit()  # IMPORTANT: Close immediately
         
         return {
             "name": location.replace("-", " ").title(),
@@ -91,6 +98,10 @@ def scrape_dining_hall(location):
     
     except Exception as e:
         print(f"❌ Error scraping {location}: {e}")
+        try:
+            driver.quit()  # Make sure to close on error
+        except:
+            pass
         return {
             "name": location.replace("-", " ").title(),
             "food_items": [],
