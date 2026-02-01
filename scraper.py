@@ -1,33 +1,35 @@
 #!/usr/bin/env python3
 """
-Columbia & Barnard Dining Scraper - Unified
-Handles both Columbia (HTML JSON) and Barnard (API JSON)
+Columbia & Barnard Dining Scraper - Separate Barnard Halls
 """
 
 import requests
 import json
 import re
 from datetime import datetime
+import time
+from bs4 import BeautifulSoup
 
-# Columbia Dining Halls (dining.columbia.edu)
+# Columbia Dining Halls (CORRECT URLs)
 COLUMBIA_LOCATIONS = [
-    "john-jay",
-    "ferris-booth-commons",
-    "jjs-place",
-    "grace-dodge",
-    "faculty-house",
-    "hewitt",
-    "diana-center",
-    "fac-shack",
-    "chef-mikes",
-    "chef-dons-pizza-pi",
-    "robert-f-smith",
-    "blue-java-butler",
-    "blue-java-uris",
-    "lenfest-cafe"
+    {"name": "John Jay Dining Hall", "url": "https://dining.columbia.edu/content/john-jay-dining-hall"},
+    {"name": "Ferris Booth Commons", "url": "https://dining.columbia.edu/content/ferris-booth-commons-0"},
+    {"name": "JJ's Place", "url": "https://dining.columbia.edu/content/jjs-place-0"},
+    {"name": "Grace Dodge", "url": "https://dining.columbia.edu/content/grace-dodge-dining-hall-0"},
+    {"name": "Faculty House 2nd Floor", "url": "https://dining.columbia.edu/content/faculty-house-2nd-floor-0"},
+    {"name": "Faculty House Skyline", "url": "https://dining.columbia.edu/content/faculty-house-4th-floor-skyline-room"},
+    {"name": "Robert F. Smith", "url": "https://dining.columbia.edu/content/robert-f-smith-dining-hall-0"},
+    {"name": "Blue Java Butler", "url": "https://dining.columbia.edu/content/blue-java-cafe-butler-library-0"},
+    {"name": "Blue Java Uris", "url": "https://dining.columbia.edu/content/blue-java-cafe-uris-hall"},
+    {"name": "Blue Java Mudd", "url": "https://dining.columbia.edu/content/blue-java-cafe-mudd-hall-0"},
+    {"name": "Blue Java Everett", "url": "https://dining.columbia.edu/content/blue-java-everett-library-cafe"},
+    {"name": "Lenfest Cafe", "url": "https://dining.columbia.edu/content/lenfest-cafe-0"},
+    {"name": "Fac Shack", "url": "https://dining.columbia.edu/content/fac-shack-0"},
+    {"name": "Chef Mike's", "url": "https://dining.columbia.edu/chef-mikes"},
+    {"name": "Johnny's", "url": "https://dining.columbia.edu/johnnys"}
 ]
 
-# Barnard Dining Halls (Dine On Campus API)
+# Barnard Dining Halls (DineOnCampus API)
 BARNARD_LOCATIONS = [
     {
         "name": "Hewitt Dining Hall",
@@ -63,10 +65,8 @@ def extract_menu_data(html):
         print(f"❌ JSON parse error: {e}")
         return None
 
-def scrape_columbia_hall(location):
+def scrape_columbia_hall(hall):
     """Scrape a Columbia dining hall"""
-    url = f"https://dining.columbia.edu/content/{location}"
-    
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -79,14 +79,14 @@ def scrape_columbia_hall(location):
             'Cache-Control': 'max-age=0'
         }
         
-        response = requests.get(url, headers=headers, timeout=30)
+        response = requests.get(hall['url'], headers=headers, timeout=30)
         response.raise_for_status()
         
         menu_data = extract_menu_data(response.text)
         
         if not menu_data:
             return {
-                "name": location.replace("-", " ").title(),
+                "name": hall['name'],
                 "food_items": [],
                 "source": "columbia",
                 "scraped_at": datetime.now().isoformat()
@@ -107,23 +107,23 @@ def scrape_columbia_hall(location):
                             food_items.add(title)
         
         return {
-            "name": location.replace("-", " ").title(),
+            "name": hall['name'],
             "food_items": sorted(list(food_items)),
             "source": "columbia",
             "scraped_at": datetime.now().isoformat()
         }
     
     except Exception as e:
-        print(f"❌ Error scraping Columbia {location}: {e}")
+        print(f"❌ Error scraping {hall['name']}: {e}")
         return {
-            "name": location.replace("-", " ").title(),
+            "name": hall['name'],
             "food_items": [],
             "source": "columbia",
             "error": str(e)
         }
 
 def scrape_barnard_hall(hall):
-    """Scrape a Barnard dining hall via Dine On Campus API"""
+    """Scrape a Barnard dining hall via DineOnCampus API"""
     today = datetime.now().strftime("%Y-%m-%d")
     url = f"https://apiv4.dineoncampus.com/locations/{hall['location_id']}/menu"
     
@@ -150,8 +150,9 @@ def scrape_barnard_hall(hall):
         # Extract food items from Barnard API format
         food_items = set()
         
-        # Barnard API structure: periods -> categories -> items
-        periods = data.get('menu', {}).get('periods', {})
+        # Barnard API structure: menu -> periods -> categories -> items
+        menu = data.get('menu', {})
+        periods = menu.get('periods', {})
         
         for period_name, period_data in periods.items():
             categories = period_data.get('categories', [])
@@ -187,9 +188,9 @@ def scrape_all_locations():
     
     # Scrape Columbia halls
     print("\n📍 Scraping Columbia halls...")
-    for location in COLUMBIA_LOCATIONS:
-        print(f"   {location}...")
-        data = scrape_columbia_hall(location)
+    for hall in COLUMBIA_LOCATIONS:
+        print(f"   {hall['name']}...")
+        data = scrape_columbia_hall(hall)
         results.append(data)
         print(f"      ✅ Found {len(data['food_items'])} food items")
         time.sleep(1)  # Wait 1 second between requests
@@ -210,6 +211,8 @@ def scrape_all_locations():
     total_items = sum(len(r['food_items']) for r in results)
     
     print(f"\n✅ Scraped {len(results)} locations")
+    print(f"   Columbia: {len(COLUMBIA_LOCATIONS)} halls")
+    print(f"   Barnard: {len(BARNARD_LOCATIONS)} halls")
     print(f"📊 Total: {total_items} food items")
     print(f"📄 Saved to menu_data.json")
     
@@ -217,9 +220,3 @@ def scrape_all_locations():
 
 if __name__ == "__main__":
     scrape_all_locations()
-
-# Add delay between requests to avoid rate limiting
-import time
-
-# In scrape_all_locations(), add delays:
-# time.sleep(1)  # 1 second between each request
