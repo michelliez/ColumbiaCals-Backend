@@ -69,7 +69,14 @@ def scrape_columbia_hall(location):
     
     try:
         headers = {
-            'User-Agent': 'CalRoarie-Student-App/1.3 (nutrition tracker for Columbia students)'
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Referer': 'https://dining.columbia.edu/',
+            'Cache-Control': 'max-age=0'
         }
         
         response = requests.get(url, headers=headers, timeout=30)
@@ -127,7 +134,12 @@ def scrape_barnard_hall(hall):
     
     try:
         headers = {
-            'User-Agent': 'CalRoarie-Student-App/1.3 (nutrition tracker for Columbia students)'
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Origin': 'https://barnard.dineoncampus.com',
+            'Referer': 'https://barnard.dineoncampus.com/'
         }
         
         response = requests.get(url, params=params, headers=headers, timeout=30)
@@ -180,6 +192,7 @@ def scrape_all_locations():
         data = scrape_columbia_hall(location)
         results.append(data)
         print(f"      ✅ Found {len(data['food_items'])} food items")
+        time.sleep(1)  # Wait 1 second between requests
     
     # Scrape Barnard halls
     print("\n📍 Scraping Barnard halls...")
@@ -188,6 +201,7 @@ def scrape_all_locations():
         data = scrape_barnard_hall(hall)
         results.append(data)
         print(f"      ✅ Found {len(data['food_items'])} food items")
+        time.sleep(1)  # Wait 1 second between requests
     
     # Save results
     with open('menu_data.json', 'w') as f:
@@ -203,3 +217,9 @@ def scrape_all_locations():
 
 if __name__ == "__main__":
     scrape_all_locations()
+
+# Add delay between requests to avoid rate limiting
+import time
+
+# In scrape_all_locations(), add delays:
+# time.sleep(1)  # 1 second between each request
