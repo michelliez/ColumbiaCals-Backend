@@ -1,222 +1,157 @@
 #!/usr/bin/env python3
 """
-Columbia & Barnard Dining Scraper - Separate Barnard Halls
+LionDine.com Simple Time-Aware Scraper
+Only scrapes the current meal period based on time
 """
 
 import requests
-import json
-import re
-from datetime import datetime
-import time
 from bs4 import BeautifulSoup
+import json
+from datetime import datetime
 
-# Columbia Dining Halls (CORRECT URLs)
-COLUMBIA_LOCATIONS = [
-    {"name": "John Jay Dining Hall", "url": "https://dining.columbia.edu/content/john-jay-dining-hall"},
-    {"name": "Ferris Booth Commons", "url": "https://dining.columbia.edu/content/ferris-booth-commons-0"},
-    {"name": "JJ's Place", "url": "https://dining.columbia.edu/content/jjs-place-0"},
-    {"name": "Grace Dodge", "url": "https://dining.columbia.edu/content/grace-dodge-dining-hall-0"},
-    {"name": "Faculty House 2nd Floor", "url": "https://dining.columbia.edu/content/faculty-house-2nd-floor-0"},
-    {"name": "Faculty House Skyline", "url": "https://dining.columbia.edu/content/faculty-house-4th-floor-skyline-room"},
-    {"name": "Robert F. Smith", "url": "https://dining.columbia.edu/content/robert-f-smith-dining-hall-0"},
-    {"name": "Blue Java Butler", "url": "https://dining.columbia.edu/content/blue-java-cafe-butler-library-0"},
-    {"name": "Blue Java Uris", "url": "https://dining.columbia.edu/content/blue-java-cafe-uris-hall"},
-    {"name": "Blue Java Mudd", "url": "https://dining.columbia.edu/content/blue-java-cafe-mudd-hall-0"},
-    {"name": "Blue Java Everett", "url": "https://dining.columbia.edu/content/blue-java-everett-library-cafe"},
-    {"name": "Lenfest Cafe", "url": "https://dining.columbia.edu/content/lenfest-cafe-0"},
-    {"name": "Fac Shack", "url": "https://dining.columbia.edu/content/fac-shack-0"},
-    {"name": "Chef Mike's", "url": "https://dining.columbia.edu/chef-mikes"},
-    {"name": "Johnny's", "url": "https://dining.columbia.edu/johnnys"}
-]
+def get_current_meal_period():
+    """Determine current meal period based on time"""
+    now = datetime.now()
+    hour = now.hour
+    
+    if 5 <= hour < 11:
+        return "breakfast", "🌅 Breakfast"
+    elif 11 <= hour < 16:
+        return "lunch", "🌞 Lunch"
+    else:
+        return "dinner", "🌙 Dinner"
 
-# Barnard Dining Halls (DineOnCampus API)
-BARNARD_LOCATIONS = [
-    {
-        "name": "Hewitt Dining Hall",
-        "location_id": "5d27a0461ca48e0aca2a104c",
-        "period_id": "697fa349771598a5a6eb2f3e"
-    },
-    {
-        "name": "Diana Center",
-        "location_id": "5d27a073e5be796ca46a93f9",
-        "period_id": "697fa349771598a5a6eb2f3e"
-    },
-    {
-        "name": "Liz's Place",
-        "location_id": "5d27a0c31ca48e0aca2a104d",
-        "period_id": "697fa349771598a5a6eb2f3e"
-    }
-]
-
-def extract_menu_data(html):
-    """Extract menu_data JSON from Columbia HTML"""
-    pattern = r'var menu_data = `(.+?)`;'
-    match = re.search(pattern, html, re.DOTALL)
+def scrape_liondine():
+    """Main scraping function - only scrapes current meal period"""
+    meal_code, meal_display = get_current_meal_period()
+    current_time = datetime.now().strftime('%I:%M %p')
     
-    if not match:
-        return None
+    print("=" * 60)
+    print("🦁 LionDine Simple Scraper")
+    print("=" * 60)
+    print(f"🕐 Current time: {current_time}")
+    print(f"🍽️  Scraping: {meal_display}")
+    print("=" * 60)
     
-    json_str = match.group(1)
+    # Try different URL patterns
+    urls_to_try = [
+        f"https://liondine.com/?meal={meal_code}",
+        f"https://liondine.com/{meal_code}",
+        "https://liondine.com/"
+    ]
     
-    try:
-        menu_data = json.loads(json_str)
-        return menu_data
-    except json.JSONDecodeError as e:
-        print(f"❌ JSON parse error: {e}")
-        return None
-
-def scrape_columbia_hall(hall):
-    """Scrape a Columbia dining hall"""
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Referer': 'https://dining.columbia.edu/',
-            'Cache-Control': 'max-age=0'
-        }
-        
-        response = requests.get(hall['url'], headers=headers, timeout=30)
-        response.raise_for_status()
-        
-        menu_data = extract_menu_data(response.text)
-        
-        if not menu_data:
-            return {
-                "name": hall['name'],
-                "food_items": [],
-                "source": "columbia",
-                "scraped_at": datetime.now().isoformat()
-            }
-        
-        # Extract food items
-        food_items = set()
-        
-        for menu in menu_data:
-            date_ranges = menu.get('date_range_fields', [])
-            for date_range in date_ranges:
-                stations = date_range.get('stations', [])
-                for station in stations:
-                    meals = station.get('meals_paragraph', [])
-                    for meal in meals:
-                        title = meal.get('title', '').strip()
-                        if title and len(title) > 2:
-                            food_items.add(title)
-        
-        return {
-            "name": hall['name'],
-            "food_items": sorted(list(food_items)),
-            "source": "columbia",
-            "scraped_at": datetime.now().isoformat()
-        }
-    
-    except Exception as e:
-        print(f"❌ Error scraping {hall['name']}: {e}")
-        return {
-            "name": hall['name'],
-            "food_items": [],
-            "source": "columbia",
-            "error": str(e)
-        }
-
-def scrape_barnard_hall(hall):
-    """Scrape a Barnard dining hall via DineOnCampus API"""
-    today = datetime.now().strftime("%Y-%m-%d")
-    url = f"https://apiv4.dineoncampus.com/locations/{hall['location_id']}/menu"
-    
-    params = {
-        "date": today,
-        "period": hall['period_id']
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
     }
     
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Origin': 'https://barnard.dineoncampus.com',
-            'Referer': 'https://barnard.dineoncampus.com/'
-        }
-        
-        response = requests.get(url, params=params, headers=headers, timeout=30)
-        response.raise_for_status()
-        
-        data = response.json()
-        
-        # Extract food items from Barnard API format
-        food_items = set()
-        
-        # Barnard API structure: menu -> periods -> categories -> items
-        menu = data.get('menu', {})
-        periods = menu.get('periods', {})
-        
-        for period_name, period_data in periods.items():
-            categories = period_data.get('categories', [])
-            for category in categories:
-                items = category.get('items', [])
-                for item in items:
-                    name = item.get('name', '').strip()
-                    if name and len(name) > 2:
-                        food_items.add(name)
-        
-        return {
-            "name": hall['name'],
-            "food_items": sorted(list(food_items)),
-            "source": "barnard",
-            "scraped_at": datetime.now().isoformat()
-        }
+    for url in urls_to_try:
+        try:
+            print(f"\n🔍 Trying: {url}")
+            response = requests.get(url, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                halls = soup.find_all('div', class_='col')
+                
+                if halls and len(halls) > 0:
+                    # Check if any halls have menu data
+                    has_data = False
+                    for hall in halls:
+                        menu_div = hall.find('div', class_='menu')
+                        if menu_div and "No data available" not in menu_div.text:
+                            food_items = menu_div.find_all('div', class_='food-name')
+                            if food_items:
+                                has_data = True
+                                break
+                    
+                    if has_data:
+                        print(f"   ✅ Found {meal_display} data!")
+                        return parse_dining_halls(soup, meal_code)
+                    else:
+                        print(f"   ⚠️  No menu data on this page")
+            else:
+                print(f"   ❌ HTTP {response.status_code}")
+                
+        except Exception as e:
+            print(f"   ❌ Error: {e}")
+            continue
     
-    except Exception as e:
-        print(f"❌ Error scraping Barnard {hall['name']}: {e}")
-        return {
-            "name": hall['name'],
-            "food_items": [],
-            "source": "barnard",
-            "error": str(e)
-        }
+    print(f"\n❌ Could not find {meal_display} menus")
+    return []
 
-def scrape_all_locations():
-    """Scrape all Columbia and Barnard dining locations"""
-    print("🦁 Columbia & Barnard Dining Scraper")
-    print("=" * 50)
+def parse_dining_halls(soup, meal_period):
+    """Parse dining halls from BeautifulSoup object"""
+    dining_halls = []
+    halls = soup.find_all('div', class_='col')
     
-    results = []
+    print(f"\n📋 Parsing dining halls:")
     
-    # Scrape Columbia halls
-    print("\n📍 Scraping Columbia halls...")
-    for hall in COLUMBIA_LOCATIONS:
-        print(f"   {hall['name']}...")
-        data = scrape_columbia_hall(hall)
-        results.append(data)
-        print(f"      ✅ Found {len(data['food_items'])} food items")
-        time.sleep(1)  # Wait 1 second between requests
+    for hall in halls:
+        name_tag = hall.find('h3')
+        if not name_tag:
+            continue
+        hall_name = name_tag.text.strip()
+        
+        hours_tag = hall.find('div', class_='hours')
+        hours = hours_tag.text.strip() if hours_tag else "Hours not available"
+        
+        menu_div = hall.find('div', class_='menu')
+        food_items = []
+        
+        if menu_div and "No data available" not in menu_div.text:
+            food_tags = menu_div.find_all('div', class_='food-name')
+            current_category = "Main"
+            
+            for food_tag in food_tags:
+                food_name = food_tag.text.strip()
+                
+                # Find category
+                prev_category = food_tag.find_previous_sibling('div', class_='food-type')
+                if prev_category:
+                    current_category = prev_category.text.strip()
+                
+                food_items.append({
+                    'name': food_name,
+                    'category': current_category
+                })
+        
+        status = f"{len(food_items)} items" if food_items else "Closed"
+        print(f"   {hall_name}: {status} - {hours}")
+        
+        dining_halls.append({
+            'name': hall_name,
+            'hours': hours,
+            'meal_period': meal_period,
+            'food_items': food_items
+        })
     
-    # Scrape Barnard halls
-    print("\n📍 Scraping Barnard halls...")
-    for hall in BARNARD_LOCATIONS:
-        print(f"   {hall['name']}...")
-        data = scrape_barnard_hall(hall)
-        results.append(data)
-        print(f"      ✅ Found {len(data['food_items'])} food items")
-        time.sleep(1)  # Wait 1 second between requests
-    
-    # Save results
+    return dining_halls
+
+def save_menu_data(dining_halls):
+    """Save scraped data"""
     with open('menu_data.json', 'w') as f:
-        json.dump(results, f, indent=2)
+        json.dump(dining_halls, f, indent=2)
     
-    total_items = sum(len(r['food_items']) for r in results)
+    meal_period = dining_halls[0].get('meal_period', 'unknown') if dining_halls else 'unknown'
     
-    print(f"\n✅ Scraped {len(results)} locations")
-    print(f"   Columbia: {len(COLUMBIA_LOCATIONS)} halls")
-    print(f"   Barnard: {len(BARNARD_LOCATIONS)} halls")
-    print(f"📊 Total: {total_items} food items")
-    print(f"📄 Saved to menu_data.json")
+    print("\n" + "=" * 60)
+    print(f"💾 Saved {meal_period.upper()} menu data to menu_data.json")
+    print("=" * 60)
     
-    return results
+    total_items = sum(len(hall['food_items']) for hall in dining_halls)
+    open_halls = sum(1 for hall in dining_halls if hall['food_items'])
+    
+    print(f"\n✅ Summary:")
+    print(f"   Total halls: {len(dining_halls)}")
+    print(f"   Open halls: {open_halls}")
+    print(f"   Total items: {total_items}")
 
 if __name__ == "__main__":
-    scrape_all_locations()
+    dining_halls = scrape_liondine()
+    
+    if dining_halls:
+        save_menu_data(dining_halls)
+        print("\n🔄 Next: Run 'python3 nutrition_api.py' to add nutrition data")
+    else:
+        print("\n❌ No data scraped. LionDine might be down or structure changed.")
+        print("💡 Try visiting https://liondine.com/ manually to check.")
