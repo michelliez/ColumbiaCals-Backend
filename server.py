@@ -22,6 +22,7 @@ app = Flask(__name__)
 CORS(app)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MENU_FILE = os.path.join(BASE_DIR, 'menu_with_nutrition.json')
 
 # Initialize ratings database on startup
 init_db()
@@ -88,6 +89,22 @@ def run_scheduler():
         schedule.run_pending()
         time.sleep(60)
 
+_refresh_lock = threading.Lock()
+_refresh_in_progress = threading.Event()
+
+def _run_update_menus_guarded():
+    with _refresh_lock:
+        if _refresh_in_progress.is_set():
+            return
+        _refresh_in_progress.set()
+    try:
+        update_menus()
+    finally:
+        _refresh_in_progress.clear()
+
+def trigger_refresh_async():
+    threading.Thread(target=_run_update_menus_guarded, daemon=True).start()
+
 def _normalize_legacy_hall(hall):
     """Convert legacy schema (hours/meal_period/food_items) into meals-based schema."""
     if 'meals' in hall:
@@ -146,23 +163,36 @@ def _normalize_legacy_hall(hall):
 scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
 scheduler_thread.start()
 
+# Ensure menu data exists on startup (Render cold start)
+if not os.path.exists(MENU_FILE):
+    trigger_refresh_async()
+
 @app.route('/api/dining-halls', methods=['GET'])
 def get_dining_halls():
     """Return menu data with nutrition"""
     try:
-        with open(os.path.join(BASE_DIR, 'menu_with_nutrition.json'), 'r') as f:
+        with open(MENU_FILE, 'r') as f:
             data = json.load(f)
         normalized = [_normalize_legacy_hall(hall) for hall in data]
         return jsonify(normalized)
     except FileNotFoundError:
-        return jsonify({"error": "Menu data not available"}), 404
+        # Trigger a refresh and wait briefly for first-time generation
+        trigger_refresh_async()
+        for _ in range(15):
+            if os.path.exists(MENU_FILE):
+                with open(MENU_FILE, 'r') as f:
+                    data = json.load(f)
+                normalized = [_normalize_legacy_hall(hall) for hall in data]
+                return jsonify(normalized)
+            time.sleep(1)
+        return jsonify({"error": "Menu data not available"}), 503
 
 @app.route('/api/refresh', methods=['GET'])
 def refresh_menus():
     """Manually trigger menu update"""
     try:
-        update_menus()
-        return jsonify({"status": "success", "message": "Menus updated"})
+        trigger_refresh_async()
+        return jsonify({"status": "success", "message": "Refresh started"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
