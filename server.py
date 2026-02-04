@@ -416,8 +416,14 @@ def get_leaderboard_endpoint():
     
     try:
         from database import get_leaderboard
-        leaderboard = get_leaderboard(limit=limit)
-        return jsonify({"leaderboard": leaderboard})
+        meal_period = get_current_meal_period()
+        current_date = get_current_date()
+        leaderboard = get_leaderboard(limit=limit, meal_period=meal_period, date=current_date)
+        return jsonify({
+            "meal_period": meal_period,
+            "date": current_date,
+            "leaderboard": leaderboard
+        })
     except Exception as e:
         print(f"Error getting leaderboard: {e}")
         return jsonify({"error": str(e)}), 500
@@ -444,8 +450,14 @@ def get_user_stats_endpoint():
     
     try:
         from database import get_user_stats
-        stats = get_user_stats(device_id)
-        return jsonify(stats)
+        meal_period = get_current_meal_period()
+        current_date = get_current_date()
+        stats = get_user_stats(device_id, meal_period=meal_period, date=current_date)
+        return jsonify({
+            **stats,
+            "meal_period": meal_period,
+            "date": current_date
+        })
     except Exception as e:
         print(f"Error getting user stats: {e}")
         return jsonify({"error": str(e)}), 500
