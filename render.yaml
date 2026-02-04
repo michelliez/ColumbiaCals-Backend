@@ -2,5 +2,6 @@ services:
   - type: web
     name: columbiacals-backend
     env: python
+    rootDir: ColumbiaCals-Backend
     buildCommand: "pip install -r requirements.txt"
     startCommand: "gunicorn server:app --bind 0.0.0.0:$PORT"
