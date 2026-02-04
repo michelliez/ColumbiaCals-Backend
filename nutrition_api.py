@@ -7,8 +7,21 @@ Filters unrealistic results and prioritizes quality matches
 import requests
 import json
 import time
+import difflib
+import argparse
+import os
+from dotenv import load_dotenv
 
-USDA_API_KEY = "ewKS5i9HHXzrJfWRzK88q9EcjJfBT2ufivWOx6BK"
+# Load environment variables from .env in backend root
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
+
+# Load API key from environment variable
+USDA_API_KEY = os.environ.get("USDA_API_KEY", "")
+if not USDA_API_KEY:
+    print("WARNING: USDA_API_KEY environment variable not set!")
+    print("Set it with: export USDA_API_KEY='your_key_here'")
+    print("Get a free key at: https://fdc.nal.usda.gov/api-key-signup.html")
+
 USDA_BASE_URL = "https://api.nal.usda.gov/fdc/v1"
 
 # Manual overrides for common problematic foods
@@ -21,6 +34,119 @@ NUTRITION_OVERRIDES = {
     "burrito": {"calories": 400, "protein": 18, "carbs": 50, "fat": 14, "sodium": 900},
     "quesadilla": {"calories": 380, "protein": 16, "carbs": 35, "fat": 18, "sodium": 750},
 }
+
+# Keyword-based fallback estimates when USDA has no match
+KEYWORD_ESTIMATES = {
+    # Proteins
+    "chicken": {"calories": 165, "protein": 31, "carbs": 0, "fat": 4, "sodium": 74},
+    "beef": {"calories": 250, "protein": 26, "carbs": 0, "fat": 15, "sodium": 72},
+    "pork": {"calories": 242, "protein": 27, "carbs": 0, "fat": 14, "sodium": 62},
+    "fish": {"calories": 206, "protein": 22, "carbs": 0, "fat": 12, "sodium": 59},
+    "salmon": {"calories": 208, "protein": 20, "carbs": 0, "fat": 13, "sodium": 59},
+    "shrimp": {"calories": 99, "protein": 24, "carbs": 0, "fat": 0, "sodium": 111},
+    "tofu": {"calories": 144, "protein": 17, "carbs": 3, "fat": 8, "sodium": 14},
+    "egg": {"calories": 155, "protein": 13, "carbs": 1, "fat": 11, "sodium": 124},
+    "turkey": {"calories": 189, "protein": 29, "carbs": 0, "fat": 7, "sodium": 70},
+    "steak": {"calories": 271, "protein": 26, "carbs": 0, "fat": 18, "sodium": 54},
+    # Grains & Carbs
+    "rice": {"calories": 130, "protein": 3, "carbs": 28, "fat": 0, "sodium": 1},
+    "pasta": {"calories": 131, "protein": 5, "carbs": 25, "fat": 1, "sodium": 1},
+    "noodle": {"calories": 138, "protein": 5, "carbs": 25, "fat": 2, "sodium": 5},
+    "bread": {"calories": 79, "protein": 3, "carbs": 15, "fat": 1, "sodium": 147},
+    "roll": {"calories": 87, "protein": 3, "carbs": 15, "fat": 2, "sodium": 146},
+    "bagel": {"calories": 245, "protein": 10, "carbs": 48, "fat": 1, "sodium": 430},
+    "croissant": {"calories": 231, "protein": 5, "carbs": 26, "fat": 12, "sodium": 424},
+    "pancake": {"calories": 227, "protein": 6, "carbs": 28, "fat": 10, "sodium": 439},
+    "waffle": {"calories": 291, "protein": 8, "carbs": 33, "fat": 14, "sodium": 511},
+    "fries": {"calories": 312, "protein": 3, "carbs": 41, "fat": 15, "sodium": 210},
+    "potato": {"calories": 161, "protein": 4, "carbs": 37, "fat": 0, "sodium": 17},
+    # Vegetables
+    "salad": {"calories": 20, "protein": 2, "carbs": 3, "fat": 0, "sodium": 25},
+    "vegetable": {"calories": 65, "protein": 3, "carbs": 13, "fat": 0, "sodium": 40},
+    "broccoli": {"calories": 55, "protein": 4, "carbs": 11, "fat": 1, "sodium": 33},
+    "spinach": {"calories": 23, "protein": 3, "carbs": 4, "fat": 0, "sodium": 79},
+    "carrot": {"calories": 52, "protein": 1, "carbs": 12, "fat": 0, "sodium": 88},
+    "corn": {"calories": 96, "protein": 3, "carbs": 21, "fat": 1, "sodium": 1},
+    "beans": {"calories": 127, "protein": 8, "carbs": 23, "fat": 0, "sodium": 1},
+    # Soups
+    "soup": {"calories": 75, "protein": 4, "carbs": 9, "fat": 2, "sodium": 480},
+    "chili": {"calories": 256, "protein": 19, "carbs": 22, "fat": 10, "sodium": 520},
+    "stew": {"calories": 180, "protein": 15, "carbs": 15, "fat": 8, "sodium": 400},
+    # Sandwiches & Wraps
+    "sandwich": {"calories": 350, "protein": 18, "carbs": 35, "fat": 14, "sodium": 750},
+    "wrap": {"calories": 320, "protein": 15, "carbs": 38, "fat": 12, "sodium": 680},
+    "sub": {"calories": 400, "protein": 20, "carbs": 45, "fat": 15, "sodium": 900},
+    # Desserts
+    "cake": {"calories": 257, "protein": 3, "carbs": 38, "fat": 11, "sodium": 214},
+    "cookie": {"calories": 148, "protein": 2, "carbs": 20, "fat": 7, "sodium": 90},
+    "brownie": {"calories": 227, "protein": 3, "carbs": 36, "fat": 9, "sodium": 175},
+    "pie": {"calories": 237, "protein": 2, "carbs": 32, "fat": 12, "sodium": 186},
+    "ice cream": {"calories": 207, "protein": 4, "carbs": 24, "fat": 11, "sodium": 80},
+    "pudding": {"calories": 119, "protein": 3, "carbs": 20, "fat": 3, "sodium": 146},
+    "muffin": {"calories": 377, "protein": 6, "carbs": 51, "fat": 17, "sodium": 447},
+    "donut": {"calories": 269, "protein": 4, "carbs": 31, "fat": 15, "sodium": 257},
+    # Breakfast
+    "oatmeal": {"calories": 158, "protein": 6, "carbs": 27, "fat": 3, "sodium": 115},
+    "cereal": {"calories": 379, "protein": 7, "carbs": 84, "fat": 2, "sodium": 729},
+    "yogurt": {"calories": 100, "protein": 17, "carbs": 6, "fat": 1, "sodium": 65},
+    "granola": {"calories": 471, "protein": 10, "carbs": 64, "fat": 20, "sodium": 26},
+    "bacon": {"calories": 541, "protein": 37, "carbs": 1, "fat": 42, "sodium": 1717},
+    "sausage": {"calories": 301, "protein": 19, "carbs": 1, "fat": 24, "sodium": 749},
+    # Drinks
+    "milk": {"calories": 149, "protein": 8, "carbs": 12, "fat": 8, "sodium": 105},
+    "juice": {"calories": 45, "protein": 1, "carbs": 10, "fat": 0, "sodium": 10},
+    "smoothie": {"calories": 150, "protein": 4, "carbs": 30, "fat": 2, "sodium": 40},
+    "coffee": {"calories": 2, "protein": 0, "carbs": 0, "fat": 0, "sodium": 5},
+    "latte": {"calories": 190, "protein": 10, "carbs": 19, "fat": 7, "sodium": 150},
+    # Misc
+    "curry": {"calories": 220, "protein": 15, "carbs": 18, "fat": 10, "sodium": 600},
+    "stir fry": {"calories": 200, "protein": 15, "carbs": 15, "fat": 8, "sodium": 500},
+    "fried rice": {"calories": 238, "protein": 6, "carbs": 34, "fat": 9, "sodium": 650},
+    "mac and cheese": {"calories": 310, "protein": 11, "carbs": 30, "fat": 16, "sodium": 750},
+    "grilled cheese": {"calories": 390, "protein": 14, "carbs": 28, "fat": 25, "sodium": 870},
+    "nachos": {"calories": 346, "protein": 9, "carbs": 36, "fat": 19, "sodium": 816},
+    "wings": {"calories": 203, "protein": 18, "carbs": 2, "fat": 14, "sodium": 484},
+    "nuggets": {"calories": 296, "protein": 15, "carbs": 16, "fat": 19, "sodium": 600},
+    "hummus": {"calories": 166, "protein": 8, "carbs": 14, "fat": 10, "sodium": 379},
+}
+
+# Default fallback when nothing matches
+DEFAULT_ESTIMATE = {"calories": 200, "protein": 10, "carbs": 20, "fat": 8, "sodium": 400}
+
+def get_keyword_estimate(food_name):
+    """
+    Get an estimated nutrition value based on keywords in the food name.
+    Returns the best matching keyword estimate or DEFAULT_ESTIMATE.
+    """
+    food_lower = food_name.lower()
+
+    # Check each keyword
+    for keyword, estimate in KEYWORD_ESTIMATES.items():
+        if keyword in food_lower:
+            print(f"   📊 Using keyword estimate for '{keyword}' in '{food_name}'")
+            return {
+                "description": food_name,
+                "calories": estimate["calories"],
+                "protein": estimate["protein"],
+                "carbs": estimate["carbs"],
+                "fat": estimate["fat"],
+                "sodium": estimate["sodium"],
+                "serving_size": "1 serving",
+                "estimated": True
+            }
+
+    # No keyword match, use default
+    print(f"   📊 Using default estimate for '{food_name}'")
+    return {
+        "description": food_name,
+        "calories": DEFAULT_ESTIMATE["calories"],
+        "protein": DEFAULT_ESTIMATE["protein"],
+        "carbs": DEFAULT_ESTIMATE["carbs"],
+        "fat": DEFAULT_ESTIMATE["fat"],
+        "sodium": DEFAULT_ESTIMATE["sodium"],
+        "serving_size": "1 serving",
+        "estimated": True
+    }
 
 def is_realistic_nutrition(calories, protein, carbs, fat):
     """
@@ -91,8 +217,8 @@ def search_usda_food(food_name):
             foods = data.get("foods", [])
             
             if not foods:
-                print(f"   ⚠️  No USDA results for '{food_name}'")
-                return None
+                print(f"   ⚠️  No USDA results for '{food_name}', using keyword estimate")
+                return get_keyword_estimate(food_name)
             
             # Score and filter results
             scored_results = []
@@ -170,36 +296,59 @@ def search_usda_food(food_name):
                 if food.get("servingSize") and food.get("servingSizeUnit"):
                     serving_size = f"{int(food['servingSize'])} {food['servingSizeUnit']}"
                 
+                # Compute similarity between search term and USDA description
+                similarity = difflib.SequenceMatcher(None, food_lower, description).ratio()
+
                 scored_results.append({
-                    "score": score,
+                    "score": score + int(similarity * 40),
                     "description": food.get("description", food_name),
                     "calories": int(calories),
                     "protein": int(protein),
                     "carbs": int(carbs),
                     "fat": int(fat),
                     "sodium": int(sodium),
-                    "serving_size": serving_size
+                    "serving_size": serving_size,
+                    "similarity": similarity
                 })
             
             if not scored_results:
-                print(f"   ⚠️  No realistic matches for '{food_name}'")
-                return None
+                print(f"   ⚠️  No realistic matches for '{food_name}', using keyword estimate")
+                return get_keyword_estimate(food_name)
             
             # Sort by score and return best match
             scored_results.sort(key=lambda x: x["score"], reverse=True)
             best_match = scored_results[0]
             
-            print(f"   ✅ Best match: {best_match['description']} ({best_match['calories']} cal, score: {best_match['score']})")
+            # Determine if the match is estimated (fuzzy) or high-confidence
+            similarity = best_match.get('similarity', 0.0)
+            is_estimated = False
+            # If exact description match, it's confident
+            if food_lower == best_match['description'].lower():
+                is_estimated = False
+            # If similarity is fairly high (>= 0.5), use the USDA result but mark as estimated
+            elif similarity >= 0.5:
+                is_estimated = True
+            # If similarity is low but we have USDA data, still use it (better than generic estimate)
+            elif similarity >= 0.3:
+                is_estimated = True
+                print(f"   ⚠️  Low similarity ({similarity:.2f}) for '{food_name}', using USDA result anyway (estimated)")
+            else:
+                # Similarity very low — use keyword estimate instead
+                print(f"   ⚠️  Very low similarity ({similarity:.2f}) for '{food_name}', using keyword estimate")
+                return get_keyword_estimate(food_name)
+
+            best_match['estimated'] = is_estimated
+            print(f"   ✅ Best match: {best_match['description']} ({best_match['calories']} cal, score: {best_match['score']}, estimated: {is_estimated})")
             
             return best_match
             
         else:
-            print(f"   ❌ USDA API error: {response.status_code}")
-            return None
-            
+            print(f"   ❌ USDA API error: {response.status_code}, using keyword estimate")
+            return get_keyword_estimate(food_name)
+
     except Exception as e:
-        print(f"   ❌ Error searching USDA: {e}")
-        return None
+        print(f"   ❌ Error searching USDA: {e}, using keyword estimate")
+        return get_keyword_estimate(food_name)
 
 def enrich_menu_with_nutrition():
     """
@@ -224,28 +373,54 @@ def enrich_menu_with_nutrition():
     # Process each dining hall
     for hall in dining_halls:
         hall_name = hall['name']
-        food_items = hall.get('food_items', [])
-        
-        if not food_items:
+        # Build a unified list of items to process from either flat 'food_items'
+        # or nested meals->stations->items so we enrich whatever structure the scraper produced.
+        items_to_process = []
+
+        # If there's a flat list (older scrapers), include those
+        if hall.get('food_items'):
+            for item in hall.get('food_items', []):
+                items_to_process.append({
+                    'name': item.get('name', ''),
+                    'category': item.get('category', 'Main'),
+                    'source': 'food_items',
+                    'ref': item
+                })
+
+        # If there's a nested meals structure, include those with references for merging
+        if hall.get('meals'):
+            for m_idx, meal in enumerate(hall.get('meals', [])):
+                for s_idx, station in enumerate(meal.get('stations', [])):
+                    for i_idx, it in enumerate(station.get('items', [])):
+                        items_to_process.append({
+                            'name': it.get('name', ''),
+                            'category': it.get('category', 'Main'),
+                            'source': 'meals',
+                            'meal_idx': m_idx,
+                            'station_idx': s_idx,
+                            'item_idx': i_idx
+                        })
+
+        if not items_to_process:
             print(f"\n📍 {hall_name}: No items to process")
             hall['food_items_with_nutrition'] = []
             continue
-        
-        print(f"\n📍 {hall_name}: Processing {len(food_items)} items...")
-        
+
+        print(f"\n📍 {hall_name}: Processing {len(items_to_process)} items...")
+
         enriched_foods = []
-        
-        for item in food_items:
+
+        for entry in items_to_process:
             total_items += 1
-            food_name = item['name']
-            
+            food_name = entry['name']
+
             # Search USDA
             nutrition = search_usda_food(food_name)
-            
+
             if nutrition:
                 enriched_food = {
                     "name": food_name,
-                    "category": item['category'],
+                    "category": entry.get('category', 'Main'),
                     "calories": nutrition['calories'],
                     "protein": nutrition['protein'],
                     "carbs": nutrition['carbs'],
@@ -254,28 +429,38 @@ def enrich_menu_with_nutrition():
                     "fiber": None,
                     "sugar": None,
                     "serving_size": nutrition['serving_size'],
-                    "grams": None
+                    "grams": None,
+                    "estimated": bool(nutrition.get('estimated', False))
                 }
                 enriched_foods.append(enriched_food)
                 enriched_items += 1
+
+                # Merge nutrition back into the originating structure
+                try:
+                    if entry['source'] == 'food_items' and entry.get('ref') is not None:
+                        entry['ref']['calories'] = int(enriched_food['calories'])
+                        entry['ref']['protein'] = int(enriched_food['protein'])
+                        entry['ref']['carbs'] = int(enriched_food['carbs'])
+                        entry['ref']['fat'] = int(enriched_food['fat'])
+                        entry['ref']['sodium'] = int(enriched_food['sodium'])
+                        entry['ref']['estimated'] = bool(enriched_food.get('estimated', False))
+
+                    elif entry['source'] == 'meals':
+                        m = hall['meals'][entry['meal_idx']]
+                        station = m['stations'][entry['station_idx']]
+                        station['items'][entry['item_idx']]['calories'] = int(enriched_food['calories'])
+                        station['items'][entry['item_idx']]['protein'] = int(enriched_food['protein'])
+                        station['items'][entry['item_idx']]['carbs'] = int(enriched_food['carbs'])
+                        station['items'][entry['item_idx']]['fat'] = int(enriched_food['fat'])
+                        station['items'][entry['item_idx']]['sodium'] = int(enriched_food['sodium'])
+                        station['items'][entry['item_idx']]['estimated'] = bool(enriched_food.get('estimated', False))
+                except Exception as e:
+                    print(f"   ⚠️ Failed to merge nutrition into meals structure: {e}")
+
             else:
-                # Use placeholder for failed matches
-                enriched_food = {
-                    "name": food_name,
-                    "category": item['category'],
-                    "calories": 150,
-                    "protein": 5,
-                    "carbs": 20,
-                    "fat": 5,
-                    "sodium": 300,
-                    "fiber": None,
-                    "sugar": None,
-                    "serving_size": "1 serving",
-                    "grams": None
-                }
-                enriched_foods.append(enriched_food)
+                # No realistic match found — do NOT insert mock data. Leave menu item unchanged.
                 failed_items += 1
-                print(f"   ⚠️  Using placeholder for '{food_name}'")
+                print(f"   ⚠️  No USDA match for '{food_name}', skipping enrichment.")
             
             # Rate limiting
             time.sleep(0.1)
@@ -295,4 +480,14 @@ def enrich_menu_with_nutrition():
     print("=" * 60)
 
 if __name__ == "__main__":
-    enrich_menu_with_nutrition()
+    parser = argparse.ArgumentParser(description='Nutrition utilities')
+    parser.add_argument('--search', '-s', type=str, help='Search USDA for a food item and return best match as JSON')
+    args = parser.parse_args()
+
+    if args.search:
+        result = search_usda_food(args.search)
+        # Always returns a result now (USDA match or keyword estimate)
+        print(json.dumps(result))
+        exit(0)
+    else:
+        enrich_menu_with_nutrition()
