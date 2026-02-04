@@ -24,6 +24,9 @@ if not USDA_API_KEY:
 
 USDA_BASE_URL = "https://api.nal.usda.gov/fdc/v1"
 
+# Simple in-memory cache for USDA lookups during a run
+USDA_SEARCH_CACHE = {}
+
 # Manual overrides for common problematic foods
 NUTRITION_OVERRIDES = {
     "tacos": {"calories": 210, "protein": 9, "carbs": 13, "fat": 13, "sodium": 450},
@@ -186,12 +189,17 @@ def search_usda_food(food_name):
     """
     print(f"   Searching USDA for: {food_name}")
     
+    cache_key = food_name.lower().strip()
+    if cache_key in USDA_SEARCH_CACHE:
+        print(f"   ✅ Cache hit for '{food_name}'")
+        return USDA_SEARCH_CACHE[cache_key]
+    
     # Check manual overrides first
     food_lower = food_name.lower().strip()
     for override_key, override_data in NUTRITION_OVERRIDES.items():
         if override_key in food_lower:
             print(f"   ✅ Using manual override for '{food_name}'")
-            return {
+            result = {
                 "description": food_name,
                 "calories": override_data["calories"],
                 "protein": override_data["protein"],
@@ -200,6 +208,8 @@ def search_usda_food(food_name):
                 "sodium": override_data["sodium"],
                 "serving_size": "1 serving"
             }
+            USDA_SEARCH_CACHE[cache_key] = result
+            return result
     
     url = f"{USDA_BASE_URL}/foods/search"
     params = {
@@ -218,7 +228,9 @@ def search_usda_food(food_name):
             
             if not foods:
                 print(f"   ⚠️  No USDA results for '{food_name}', using keyword estimate")
-                return get_keyword_estimate(food_name)
+                result = get_keyword_estimate(food_name)
+                USDA_SEARCH_CACHE[cache_key] = result
+                return result
             
             # Score and filter results
             scored_results = []
@@ -313,7 +325,9 @@ def search_usda_food(food_name):
             
             if not scored_results:
                 print(f"   ⚠️  No realistic matches for '{food_name}', using keyword estimate")
-                return get_keyword_estimate(food_name)
+                result = get_keyword_estimate(food_name)
+                USDA_SEARCH_CACHE[cache_key] = result
+                return result
             
             # Sort by score and return best match
             scored_results.sort(key=lambda x: x["score"], reverse=True)
@@ -335,20 +349,27 @@ def search_usda_food(food_name):
             else:
                 # Similarity very low — use keyword estimate instead
                 print(f"   ⚠️  Very low similarity ({similarity:.2f}) for '{food_name}', using keyword estimate")
-                return get_keyword_estimate(food_name)
+                result = get_keyword_estimate(food_name)
+                USDA_SEARCH_CACHE[cache_key] = result
+                return result
 
             best_match['estimated'] = is_estimated
             print(f"   ✅ Best match: {best_match['description']} ({best_match['calories']} cal, score: {best_match['score']}, estimated: {is_estimated})")
             
+            USDA_SEARCH_CACHE[cache_key] = best_match
             return best_match
             
         else:
             print(f"   ❌ USDA API error: {response.status_code}, using keyword estimate")
-            return get_keyword_estimate(food_name)
+            result = get_keyword_estimate(food_name)
+            USDA_SEARCH_CACHE[cache_key] = result
+            return result
 
     except Exception as e:
         print(f"   ❌ Error searching USDA: {e}, using keyword estimate")
-        return get_keyword_estimate(food_name)
+        result = get_keyword_estimate(food_name)
+        USDA_SEARCH_CACHE[cache_key] = result
+        return result
 
 def enrich_menu_with_nutrition():
     """

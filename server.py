@@ -40,7 +40,7 @@ def update_menus():
             [sys.executable, os.path.join(BASE_DIR, 'run_all_scrapers.py')],
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=300,
             cwd=BASE_DIR
         )
         
@@ -56,7 +56,7 @@ def update_menus():
             [sys.executable, os.path.join(BASE_DIR, 'nutrition_api.py')],
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=300,
             cwd=BASE_DIR
         )
         
