@@ -488,16 +488,26 @@ def enrich_menu_with_nutrition():
         
         hall['food_items_with_nutrition'] = enriched_foods
     
+    # Check if data has too many errors (scraping failed)
+    error_count = sum(1 for hall in dining_halls if hall.get('status') == 'error')
+    if error_count > len(dining_halls) / 2:
+        print("\n" + "=" * 60)
+        print(f"⚠️ Skipping save - too many scraping errors ({error_count}/{len(dining_halls)} halls)")
+        print("   Keeping existing menu_with_nutrition.json")
+        print("=" * 60)
+        return
+
     # Save enriched data
     with open('menu_with_nutrition.json', 'w') as f:
         json.dump(dining_halls, f, indent=2)
-    
+
     print("\n" + "=" * 60)
     print(f"✅ Nutrition enrichment complete!")
     print(f"   Total items: {total_items}")
     print(f"   Enriched with USDA: {enriched_items}")
     print(f"   Using placeholders: {failed_items}")
-    print(f"   Success rate: {int(enriched_items/total_items*100)}%")
+    if total_items > 0:
+        print(f"   Success rate: {int(enriched_items/total_items*100)}%")
     print("=" * 60)
 
 if __name__ == "__main__":
