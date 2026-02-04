@@ -196,6 +196,20 @@ def refresh_menus():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/')
+def home():
+    """Root endpoint for health checks"""
+    return jsonify({
+        "service": "ColumbiaCals API",
+        "status": "running",
+        "endpoints": [
+            "/api/dining-halls",
+            "/api/ratings",
+            "/api/ratings/averages",
+            "/api/status"
+        ]
+    })
+
 @app.route('/api/status', methods=['GET'])
 def status():
     """Health check endpoint"""
