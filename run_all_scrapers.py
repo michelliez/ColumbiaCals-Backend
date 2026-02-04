@@ -37,10 +37,17 @@ def run_all_scrapers():
     except Exception as e:
         print(f"\n❌ Cornell scraper failed: {e}")
     
-    # Save combined results
+    # Check if data has too many errors (scraping failed)
     output_file = os.path.join(os.path.dirname(__file__), 'menu_data.json')
-    with open(output_file, 'w') as f:
-        json.dump(all_results, f, indent=2)
+    error_count = sum(1 for r in all_results if r.get('status') == 'error')
+
+    if error_count > len(all_results) / 2:
+        print(f"\n⚠️ Skipping save - too many scraping errors ({error_count}/{len(all_results)} halls)")
+        print("   Keeping existing menu_data.json")
+    else:
+        # Save combined results
+        with open(output_file, 'w') as f:
+            json.dump(all_results, f, indent=2)
     
     # Print summary
     print("\n" + "=" * 60)
