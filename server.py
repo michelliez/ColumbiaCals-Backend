@@ -44,12 +44,15 @@ def update_menus():
             cwd=BASE_DIR
         )
         
+        # Print scraper output for debugging
+        if result1.stdout:
+            print(result1.stdout)
         if result1.returncode == 0:
             print("✅ All scrapers complete!")
         else:
             print(f"❌ Scrapers failed: {result1.stderr}")
             return
-        
+
         # Run nutrition API
         print("\nStep 2/2: Adding nutrition data...")
         result2 = subprocess.run(
@@ -59,7 +62,10 @@ def update_menus():
             timeout=300,
             cwd=BASE_DIR
         )
-        
+
+        # Print nutrition output for debugging
+        if result2.stdout:
+            print(result2.stdout)
         if result2.returncode == 0:
             print("✅ Nutrition data added!")
         else:
