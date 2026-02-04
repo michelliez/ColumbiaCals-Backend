@@ -4,6 +4,7 @@ Improved USDA API Integration with Better Matching
 Filters unrealistic results and prioritizes quality matches
 """
 
+import sys
 import requests
 import json
 import time
@@ -11,6 +12,10 @@ import difflib
 import argparse
 import os
 from dotenv import load_dotenv
+
+print(f"[nutrition_api] Starting... Python: {sys.executable}", flush=True)
+print(f"[nutrition_api] CWD: {os.getcwd()}", flush=True)
+print(f"[nutrition_api] __file__: {__file__}", flush=True)
 
 # Load environment variables from .env in backend root
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
@@ -411,11 +416,21 @@ def enrich_menu_with_nutrition():
     print("\n" + "=" * 60)
     print("🥗 Adding Nutrition Data (Improved Matching)")
     print("=" * 60)
-    
+
+    # Use absolute paths based on this script's location
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    menu_data_path = os.path.join(base_dir, 'menu_data.json')
+    output_path = os.path.join(base_dir, 'menu_with_nutrition.json')
+
+    print(f"   Input: {menu_data_path}")
+    print(f"   Input exists: {os.path.exists(menu_data_path)}")
+    print(f"   Output: {output_path}")
+
     # Load menu data
     try:
-        with open('menu_data.json', 'r') as f:
+        with open(menu_data_path, 'r') as f:
             dining_halls = json.load(f)
+        print(f"   Loaded {len(dining_halls)} dining halls from menu_data.json")
     except FileNotFoundError:
         print("❌ menu_data.json not found. Run scraper.py first.")
         return
@@ -531,7 +546,7 @@ def enrich_menu_with_nutrition():
         return
 
     # Save enriched data
-    with open('menu_with_nutrition.json', 'w') as f:
+    with open(output_path, 'w') as f:
         json.dump(dining_halls, f, indent=2)
 
     print("\n" + "=" * 60)

@@ -32,44 +32,61 @@ def update_menus():
     print(f"\n{'='*60}")
     print(f"🕐 Scheduled update at {datetime.now().strftime('%I:%M %p')}")
     print(f"{'='*60}\n")
-    
+
     try:
         # Run all university scrapers
-        print("Step 1/2: Running all scrapers...")
+        scraper_path = os.path.join(BASE_DIR, 'run_all_scrapers.py')
+        print(f"Step 1/2: Running all scrapers...", flush=True)
+        print(f"   Python: {sys.executable}", flush=True)
+        print(f"   Script: {scraper_path}", flush=True)
+        print(f"   Exists: {os.path.exists(scraper_path)}", flush=True)
+
         result1 = subprocess.run(
-            [sys.executable, os.path.join(BASE_DIR, 'run_all_scrapers.py')],
+            [sys.executable, scraper_path],
             capture_output=True,
             text=True,
             timeout=300,
             cwd=BASE_DIR
         )
-        
-        # Print scraper output for debugging
+
+        # Always print all output for debugging (flush to ensure visibility in logs)
+        print(f"   Return code: {result1.returncode}", flush=True)
         if result1.stdout:
-            print(result1.stdout)
+            print(f"   STDOUT:\n{result1.stdout}", flush=True)
+        if result1.stderr:
+            print(f"   STDERR:\n{result1.stderr}", flush=True)
+
         if result1.returncode == 0:
             print("✅ All scrapers complete!")
         else:
-            print(f"❌ Scrapers failed: {result1.stderr}")
+            print(f"❌ Scrapers failed with code {result1.returncode}")
             return
 
         # Run nutrition API
-        print("\nStep 2/2: Adding nutrition data...")
+        nutrition_path = os.path.join(BASE_DIR, 'nutrition_api.py')
+        print(f"\nStep 2/2: Adding nutrition data...")
+        print(f"   Script: {nutrition_path}")
+        print(f"   Exists: {os.path.exists(nutrition_path)}")
+
         result2 = subprocess.run(
-            [sys.executable, os.path.join(BASE_DIR, 'nutrition_api.py')],
+            [sys.executable, nutrition_path],
             capture_output=True,
             text=True,
             timeout=300,
             cwd=BASE_DIR
         )
 
-        # Print nutrition output for debugging
+        # Always print all output for debugging (flush to ensure visibility in logs)
+        print(f"   Return code: {result2.returncode}", flush=True)
         if result2.stdout:
-            print(result2.stdout)
+            print(f"   STDOUT:\n{result2.stdout}", flush=True)
+        if result2.stderr:
+            print(f"   STDERR:\n{result2.stderr}", flush=True)
+
         if result2.returncode == 0:
             print("✅ Nutrition data added!")
         else:
-            print(f"❌ Nutrition API failed: {result2.stderr}")
+            print(f"❌ Nutrition API failed with code {result2.returncode}")
             return
         
         print(f"\n{'='*60}")

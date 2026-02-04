@@ -9,11 +9,27 @@ import os
 import json
 from datetime import datetime
 
-# Add scrapers directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'scrapers'))
+print(f"[run_all_scrapers] Starting... Python: {sys.executable}", flush=True)
+print(f"[run_all_scrapers] CWD: {os.getcwd()}", flush=True)
+print(f"[run_all_scrapers] __file__: {__file__}", flush=True)
 
-from columbia.scraper import scrape_all_locations as scrape_columbia
-from cornell.scraper import scrape_cornell
+# Add scrapers directory to path
+scrapers_dir = os.path.join(os.path.dirname(__file__), 'scrapers')
+sys.path.insert(0, scrapers_dir)
+print(f"[run_all_scrapers] Added to path: {scrapers_dir}")
+print(f"[run_all_scrapers] Scrapers dir exists: {os.path.exists(scrapers_dir)}")
+
+try:
+    print("[run_all_scrapers] Importing columbia.scraper...")
+    from columbia.scraper import scrape_all_locations as scrape_columbia
+    print("[run_all_scrapers] Importing cornell.scraper...")
+    from cornell.scraper import scrape_cornell
+    print("[run_all_scrapers] All imports successful!")
+except ImportError as e:
+    print(f"[run_all_scrapers] IMPORT ERROR: {e}")
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
 
 def run_all_scrapers():
     """Run all university scrapers and combine results"""

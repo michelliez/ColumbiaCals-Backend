@@ -141,12 +141,14 @@ def get_user_rating(device_id, hall_name, university, meal_period, date):
     return row['rating'] if row else None
 
 
-def get_leaderboard(limit=50):
+def get_leaderboard(limit=50, meal_period=None, date=None):
     """
-    Get top users by total number of ratings submitted
+    Get top users by total number of ratings submitted for a meal period/date
     
     Args:
         limit: Maximum number of users to return
+        meal_period: The meal period to query
+        date: The date to query (YYYY-MM-DD format)
         
     Returns:
         List of dicts with rank, anonymized name, and total_ratings
@@ -154,13 +156,23 @@ def get_leaderboard(limit=50):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    cursor.execute('''
-        SELECT device_id, COUNT(*) as total_ratings
-        FROM ratings
-        GROUP BY device_id
-        ORDER BY total_ratings DESC
-        LIMIT ?
-    ''', (limit,))
+    if meal_period and date:
+        cursor.execute('''
+            SELECT device_id, COUNT(*) as total_ratings
+            FROM ratings
+            WHERE meal_period = ? AND date = ?
+            GROUP BY device_id
+            ORDER BY total_ratings DESC
+            LIMIT ?
+        ''', (meal_period, date, limit))
+    else:
+        cursor.execute('''
+            SELECT device_id, COUNT(*) as total_ratings
+            FROM ratings
+            GROUP BY device_id
+            ORDER BY total_ratings DESC
+            LIMIT ?
+        ''', (limit,))
     
     rows = cursor.fetchall()
     conn.close()
@@ -178,12 +190,14 @@ def get_leaderboard(limit=50):
     return leaderboard
 
 
-def get_user_stats(device_id):
+def get_user_stats(device_id, meal_period=None, date=None):
     """
-    Get user's rank and total ratings
+    Get user's rank and total ratings for a meal period/date
     
     Args:
         device_id: User's device UUID
+        meal_period: The meal period to query
+        date: The date to query (YYYY-MM-DD format)
         
     Returns:
         Dict with rank and total_ratings
@@ -191,21 +205,44 @@ def get_user_stats(device_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Get total ratings for this user
-    cursor.execute('SELECT COUNT(*) as total FROM ratings WHERE device_id = ?', (device_id,))
-    result = cursor.fetchone()
-    total_ratings = result['total'] if result else 0
-    
-    # Get user's rank (count how many users have more ratings)
-    cursor.execute('''
-        SELECT COUNT(*) + 1 as rank
-        FROM (
-            SELECT device_id, COUNT(*) as cnt
+    if meal_period and date:
+        cursor.execute('''
+            SELECT COUNT(*) as total
             FROM ratings
-            GROUP BY device_id
-        ) AS user_counts
-        WHERE cnt > (SELECT COUNT(*) FROM ratings WHERE device_id = ?)
-    ''', (device_id,))
+            WHERE device_id = ? AND meal_period = ? AND date = ?
+        ''', (device_id, meal_period, date))
+        result = cursor.fetchone()
+        total_ratings = result['total'] if result else 0
+        
+        cursor.execute('''
+            SELECT COUNT(*) + 1 as rank
+            FROM (
+                SELECT device_id, COUNT(*) as cnt
+                FROM ratings
+                WHERE meal_period = ? AND date = ?
+                GROUP BY device_id
+            ) AS user_counts
+            WHERE cnt > (
+                SELECT COUNT(*)
+                FROM ratings
+                WHERE device_id = ? AND meal_period = ? AND date = ?
+            )
+        ''', (meal_period, date, device_id, meal_period, date))
+    else:
+        # All-time fallback
+        cursor.execute('SELECT COUNT(*) as total FROM ratings WHERE device_id = ?', (device_id,))
+        result = cursor.fetchone()
+        total_ratings = result['total'] if result else 0
+        
+        cursor.execute('''
+            SELECT COUNT(*) + 1 as rank
+            FROM (
+                SELECT device_id, COUNT(*) as cnt
+                FROM ratings
+                GROUP BY device_id
+            ) AS user_counts
+            WHERE cnt > (SELECT COUNT(*) FROM ratings WHERE device_id = ?)
+        ''', (device_id,))
     
     result = cursor.fetchone()
     rank = result['rank'] if result else 1
