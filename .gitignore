@@ -12,10 +12,11 @@ venv/
 .env
 *.env
 
-# Generated data files (will be regenerated)
+# Generated data files (intermediate only)
 menu_data.json
-menu_with_nutrition.json
 *.log
+
+# Note: menu_with_nutrition.json is committed as fallback data for cold starts
 
 # macOS
 .DS_Store
